@@ -51,7 +51,20 @@ safe=504x368+433+72
 Install **after** waze-on-cluster and enable its map first. The deploy tool runs
 `safearead.js activate`; the Store shows a restart pending, and the safe area
 takes effect at the next head-unit start. Remove it in the Store;
-`safearead.js deactivate` restores waze-on-cluster's safe area.
+`safearead.js deactivate` restores the safe area from its backup.
+
+**What "restores" means.** At the first install the tool backs up the safe area
+as it is **at that moment** (`/usr/bin/carplay.woc-safearea.json`), and removal
+puts exactly that back. If the safe area was already changed by hand before the
+install (e.g. already 433), removal returns that value, not waze-on-cluster's
+default 286. To have removal return 286, press **Enable map** in the
+waze-on-cluster app before installing this tool.
+
+**Remove it while the map is on.** If you turn the map off (Disable map, which
+puts back the stock 1920×900 geometry) and then remove this tool, the removal
+writes the backed-up 1088×480 safe area over the stock geometry, leaving it
+inconsistent. Remove this tool first, or press Enable map again before removing
+it.
 
 ## From a shell
 
