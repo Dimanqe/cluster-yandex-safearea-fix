@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 cluster-yandex-safearea-fix contributors
+[Unit]
+Description=cluster-yandex-safearea-fix: re-apply the Yandex Maps cluster safe area after each boot
+# After waze-on-cluster's patch daemon so its Enable map / update has settled
+# this boot before we re-apply the safe area on top of it.
+After=local-fs.target waze-on-cluster-patchd.service
+RequiresMountsFor=/var/opt
+
+[Service]
+# Root, like waze-on-cluster's services: it remounts / read-write only to run
+# the vetted, reversible safearea_patch.js reconcile (region backup, verified
+# write), then read-only again. It never kills, restarts or reboots carplay; it
+# only replaces the on-disk binary, which the next head-unit start picks up.
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/node /var/opt/cluster-yandex-safearea-fix/current/safearead.js reconcile
+KillMode=mixed
+TimeoutStopSec=90
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
