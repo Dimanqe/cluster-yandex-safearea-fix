@@ -28,11 +28,16 @@ head-unit start, the same way waze-on-cluster works.
 
 It writes only the two 8-byte safe-area immediates of the IC_HIGH geometry
 builder (found by structure, not fixed address) and keeps a backup of exactly
-those bytes. It refuses unless waze-on-cluster's resolution patch is active
-(physical size 138×61 mm), so it never rewrites a stock geometry. It never
-stops, kills, restarts or reboots CarPlay. Removing the tool restores
-waze-on-cluster's own safe area. Proven on carplay `22.28.3` (build-id
-`5de62156…`).
+those bytes. The backup is stamped with the carplay binary it came from (build-id
+and size): a waze-on-cluster update or Enable map keeps the same binary, so the
+backup stays valid, but a BMW firmware update replaces carplay with a different
+binary — then, on the next apply, the tool takes a fresh backup of the new
+binary's original bytes before re-applying the offset, and overwrites the old
+backup (one backup file, no stale copies). So removing the tool always restores
+whatever the current carplay shipped with. It refuses unless waze-on-cluster's
+resolution patch is active (physical size 138×61 mm), so it never rewrites a
+stock geometry. It never stops, kills, restarts or reboots CarPlay. Proven on
+carplay `22.28.3` (build-id `5de62156…`).
 
 ## The offset
 
