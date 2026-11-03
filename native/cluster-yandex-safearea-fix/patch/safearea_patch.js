@@ -177,7 +177,17 @@ function doApply(target, want, yes, reconcile) {
      * our own value. revert then restores whatever this carplay shipped with. */
     var bak = readBackup(target);
     var editApplied = p.edits.every(function (x) { return x.cur === x.want; });
-    if (!bak) writeBackup(target, loc, buf);
+    if (!bak) {
+        /* The first backup records the current bytes as the original to restore
+         * on revert. That is only right when they are still waze-on-cluster's,
+         * not our own edit: with no backup we cannot tell them apart, so if the
+         * safe area already reads as our wanted value we refuse rather than
+         * stamp our edit as the original (which would make revert a no-op). */
+        if (editApplied)
+            die('refusing: the safe area is already ' + geomText(want) + ' but this tool has no backup, so it cannot tell the original from its own edit.' +
+                '\n  Restore waze-on-cluster\'s safe area first (press Enable map, or carplay_patch.js revert), then apply this tool.');
+        writeBackup(target, loc, buf);
+    }
     else if (!sameBinary(bak, loc, buf) && !editApplied) writeBackup(target, loc, buf);
 
     var out = Buffer.from(buf), changed = [];
