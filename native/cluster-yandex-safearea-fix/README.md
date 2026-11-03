@@ -34,7 +34,11 @@ backup stays valid, but a BMW firmware update replaces carplay with a different
 binary — then, on the next apply, the tool takes a fresh backup of the new
 binary's original bytes before re-applying the offset, and overwrites the old
 backup (one backup file, no stale copies). So removing the tool always restores
-whatever the current carplay shipped with. It refuses unless waze-on-cluster's
+whatever the current carplay shipped with. If it is ever asked to take a first
+backup while the safe area already reads as its own wanted value (e.g. the backup
+was deleted by hand while the offset was applied), it refuses rather than record
+its own edit as the original — restore waze-on-cluster's safe area first (Enable
+map) and apply again. It refuses unless waze-on-cluster's
 resolution patch is active (physical size 138×61 mm), so it never rewrites a
 stock geometry. It never stops, kills, restarts or reboots CarPlay. Proven on
 carplay `22.28.3` (build-id `5de62156…`).

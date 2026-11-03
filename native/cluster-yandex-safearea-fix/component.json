@@ -1,7 +1,7 @@
 {
   "id": "cluster-yandex-safearea-fix",
   "kind": "tool",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "GPL-3.0-or-later",
   "title": "Yandex Maps cluster safe-area fix",
   "description": "Fixes the CarPlay instrument-cluster safe area for Yandex Maps on top of waze-on-cluster: moves the guidance-banner rectangle to where Yandex Maps needs it and keeps it there after each boot. The safe area is one rectangle for every CarPlay app, so this offset is right for Yandex Maps and may misplace the banner on others. Reversible; removing it restores waze-on-cluster's safe area.",
