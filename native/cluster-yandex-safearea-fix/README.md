@@ -4,6 +4,9 @@ A small reversible add-on tool for [waze-on-cluster](https://github.com/robertni
 on a BMW iDrive 7 head unit (MGU) that **fixes the CarPlay instrument-cluster
 safe area for Yandex Maps**.
 
+CarPlay is iPhone-only, so this is for the **iOS** Yandex Maps app projected
+over CarPlay — not Android Auto.
+
 ## What it fixes
 
 waze-on-cluster advertises the cluster map at 1088×480 and sets its own default
