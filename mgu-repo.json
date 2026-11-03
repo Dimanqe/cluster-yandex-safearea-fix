@@ -5,7 +5,7 @@
       "id": "cluster-yandex-safearea-fix",
       "kind": "tool",
       "path": "native/cluster-yandex-safearea-fix",
-      "title": "Yandex Maps cluster safe-area fix",
+      "title": "Y.Maps cluster safe-area fix",
       "mguHmi": ["ID7"],
       "uninstallable": true,
       "requires": { "mgu-deploy": "0.7.0", "waze-on-cluster": "0.7.1" }
