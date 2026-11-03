@@ -14,10 +14,15 @@
  *
  * It writes only the two 8-byte safe-area immediates of the IC_HIGH geometry
  * builder (found structurally, not by fixed address) and keeps a backup of
- * exactly those bytes, so revert restores what waze-on-cluster had. It edits
- * the file by atomic rename, not the running process; the change takes effect
- * at the next head-unit start. It refuses unless waze-on-cluster's resolution
- * patch is active (mm size 138x61), so it never rewrites a stock geometry.
+ * exactly those bytes, so revert restores what waze-on-cluster had. The backup
+ * is stamped with the carplay binary it came from (build-id + size); when a
+ * firmware update replaces carplay, apply/reconcile take a fresh backup of the
+ * new binary's original bytes (while our edit is not yet on it) and overwrite
+ * the stale one, so revert always restores the current carplay's own bytes. It
+ * edits the file by atomic rename, not the running process; the change takes
+ * effect at the next head-unit start. It refuses unless waze-on-cluster's
+ * resolution patch is active (mm size 138x61), so it never rewrites a stock
+ * geometry.
  *
  *   safearea_patch.js status    [--target <file>]
  *   safearea_patch.js apply     [--safe WxH+X+Y] [--conf <file>] [--target <file>] [--yes]
@@ -44,6 +49,17 @@ var WOC_MM = { w: 138, h: 61 };
 function sha256(buf) { return crypto.createHash('sha256').update(buf).digest('hex'); }
 function die(msg) { process.stderr.write('error: ' + msg + '\n'); process.exit(1); }
 function backupPath(t) { return t + '.woc-safearea.json'; }
+
+/* Which carplay binary a backup belongs to: its GNU build-id and size. A
+ * waze-on-cluster update or Enable map rewrites the safe area but keeps the
+ * same binary (same id), so the backup still holds the right original; a BMW
+ * firmware update replaces carplay with a different binary (new id), and then
+ * the old backup is stale. */
+function binaryId(loc, buf) { return (loc.buildId || 'none') + ':' + buf.length; }
+function sameBinary(bak, loc, buf) {
+    if (bak.binaryId) return bak.binaryId === binaryId(loc, buf);
+    return !!bak.buildId && bak.buildId === loc.buildId;   /* a backup from before this field: compare build-id only */
+}
 
 function parseSafe(s, where) {
     var m = /^([0-9]+)x([0-9]+)\+([0-9]+)\+([0-9]+)$/.exec((s || '').trim());
@@ -114,12 +130,15 @@ function cmdStatus(target, safeArg, confPath) {
     line('backup', fs.existsSync(backupPath(target)) ? backupPath(target) : 'none');
 }
 
+/* Capture the current (original) safe-area bytes as the backup, stamped with
+ * the binary they came from. Written to the one backup path, so a refresh
+ * overwrites the previous backup rather than keeping it around. */
 function writeBackup(target, loc, buf) {
     var regions = {
         safe1: { off: loc.res.safe1, hex: buf.toString('hex', loc.res.safe1, loc.res.safe1 + 8) },
         safe2: { off: loc.res.safe2, hex: buf.toString('hex', loc.res.safe2, loc.res.safe2 + 8) },
     };
-    fs.writeFileSync(backupPath(target), JSON.stringify({ buildId: loc.buildId, savedAt: new Date().toISOString(), regions: regions }, null, 2) + '\n', { mode: 0o600 });
+    fs.writeFileSync(backupPath(target), JSON.stringify({ buildId: loc.buildId, binaryId: binaryId(loc, buf), savedAt: new Date().toISOString(), regions: regions }, null, 2) + '\n', { mode: 0o600 });
 }
 function readBackup(target) { try { return JSON.parse(fs.readFileSync(backupPath(target), 'utf8')); } catch (e) { return null; } }
 
@@ -150,7 +169,16 @@ function doApply(target, want, yes, reconcile) {
     if (!loc.elf || !loc.ok) die('refusing: ' + (loc.reason || 'not an ELF'));
     var p = plan(buf, loc, want);
     if (p.err) die('refusing: ' + p.err);
-    if (!fs.existsSync(backupPath(target))) writeBackup(target, loc, buf);
+
+    /* Keep the backup matched to the current carplay. Take one on the first
+     * run, and refresh it (replacing the old one) when carplay has been
+     * replaced by a different binary since the backup was made — but only while
+     * our edit is not yet on it, so what we capture is the real original, not
+     * our own value. revert then restores whatever this carplay shipped with. */
+    var bak = readBackup(target);
+    var editApplied = p.edits.every(function (x) { return x.cur === x.want; });
+    if (!bak) writeBackup(target, loc, buf);
+    else if (!sameBinary(bak, loc, buf) && !editApplied) writeBackup(target, loc, buf);
 
     var out = Buffer.from(buf), changed = [];
     p.edits.forEach(function (x) { if (x.cur !== x.want) { Buffer.from(x.want, 'hex').copy(out, x.off); changed.push(x.name); } });
