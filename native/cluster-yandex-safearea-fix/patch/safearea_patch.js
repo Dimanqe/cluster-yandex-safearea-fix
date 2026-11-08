@@ -148,12 +148,12 @@ function writeInPlace(target, buf) {
     try { st = fs.statSync(target); } catch (e) { st = { mode: 0o755 }; }
     fs.writeFileSync(tmp, buf, { mode: st.mode & 0o777 });
     fsyncFile(tmp);
+    /* Only the atomic rename: never write the new bytes in place over target,
+     * which may be the inode a running carplay executes. If the rename cannot
+     * happen (/ read-only), fail and leave the old binary — the next boot's
+     * reconcile tries again. */
     try { fs.renameSync(tmp, target); }
-    catch (e) {
-        try { fs.unlinkSync(tmp); } catch (e2) {}
-        var fd = fs.openSync(target, 'r+');
-        try { fs.writeSync(fd, buf, 0, buf.length, 0); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-    }
+    catch (e) { try { fs.unlinkSync(tmp); } catch (e2) {} die('could not replace ' + target + ' (' + e.message + '); left unchanged'); }
 }
 function onlyRegionsDiffer(a, b, regions) {
     if (a.length !== b.length) return false;
@@ -202,20 +202,31 @@ function doApply(target, want, yes, reconcile) {
     process.stdout.write('ok. sha256 now ' + sha256(out) + '\n');
 }
 
+/* Restore the backed-up bytes. This runs at removal, where it MUST NOT write
+ * into a binary the backup is not for: it restores only a backup that belongs
+ * to the current carplay (sameBinary) and whose recorded offsets are the ones
+ * located now. A firmware update replaces carplay — a different build-id/size,
+ * or the immediates at new offsets — so the backup is for a binary that is
+ * gone and our edit is not on this one; putting its bytes back at its old
+ * offsets would scribble on unrelated code. Every such case succeeds doing
+ * nothing (and drops a stale backup), so a removal is never refused or made to
+ * corrupt the binary. */
 function cmdRevert(target, yes, dropBackup) {
     var bak = readBackup(target);
-    if (!bak) die('no backup at ' + backupPath(target) + '; nothing to revert');
+    function drop() { if (dropBackup) { try { fs.unlinkSync(backupPath(target)); process.stdout.write('backup dropped\n'); } catch (e) {} } }
+    if (!bak || !bak.regions) { process.stdout.write('nothing to revert; no usable backup at ' + backupPath(target) + '\n'); return; }
     var buf = readTarget(target), loc = locator.locate(buf);
-    if (!loc.elf || !loc.ok) die('refusing: current ' + target + ' does not locate (' + (loc.reason || 'not an ELF') + ')');
+    if (!loc.elf || !loc.ok) { process.stdout.write('nothing to revert; ' + target + ' does not locate (' + (loc.reason || 'not an ELF') + ')\n'); drop(); return; }
+    var offsOk = bak.regions.safe1 && bak.regions.safe2 && bak.regions.safe1.off === loc.res.safe1 && bak.regions.safe2.off === loc.res.safe2;
+    if (!sameBinary(bak, loc, buf) || !offsOk) { process.stdout.write('nothing to revert; the backup is for a different carplay\n'); drop(); return; }
     var out = Buffer.from(buf), regions = [], changed = false;
     Object.keys(bak.regions).forEach(function (name) {
         var r = bak.regions[name], b = Buffer.from(r.hex, 'hex');
         regions.push({ off: r.off, len: b.length });
         if (!out.slice(r.off, r.off + b.length).equals(b)) { b.copy(out, r.off); changed = true; }
     });
-    function drop() { if (dropBackup) { try { fs.unlinkSync(backupPath(target)); process.stdout.write('backup dropped\n'); } catch (e) {} } }
-    if (!changed) { process.stdout.write('already reverted; the safe area is as backed up\n'); drop(); return; }
-    if (!onlyRegionsDiffer(out, buf, regions)) die('refusing: restore would change bytes outside the safe-area immediates');
+    if (!changed) { process.stdout.write('nothing to revert; the safe area is already as backed up\n'); drop(); return; }
+    if (!onlyRegionsDiffer(out, buf, regions)) { process.stdout.write('nothing to revert; a restore would change bytes outside the safe-area immediates\n'); drop(); return; }
     process.stdout.write('revert ' + target + ' from ' + backupPath(target) + '\n');
     if (!yes) die('pass --yes to proceed');
     writeInPlace(target, out);

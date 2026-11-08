@@ -72,7 +72,7 @@ function runPatch(args, cb) {
             ((out || '') + '').split('\n').forEach(function (l) { if (l.trim()) log(l.trim()); });
             if (errOut) (errOut + '').split('\n').forEach(function (l) { if (l.trim()) log('patcher: ' + l.trim()); });
             var text = (out || '') + '';
-            var changed = !pErr && !/nothing to do|already set/i.test(text);
+            var changed = !pErr && !/nothing to do|already set|nothing to revert/i.test(text);
             if (linked && !changed && !lock.holds(RUNNING, TARGET)) unlinkQuiet(RUNNING);
             finishRo(pErr || null, changed, got, cb);
         });
@@ -89,22 +89,35 @@ function ensureRunDir() { try { fs.mkdirSync(RUNDIR, 0o755); } catch (e) {} }
 function writePending(action) { ensureRunDir(); try { fs.writeFileSync(PENDING, JSON.stringify({ action: action }) + '\n', { mode: 0o644 }); } catch (e) {} }
 function finish(result, code) { process.stdout.write(JSON.stringify(result) + '\n'); process.exit(code); }
 
+/* The install/update hook. It ALWAYS exits 0: a failure to write the offset
+ * (map off, carplay not located, / not writable, the no-backup guard) is
+ * logged and left for the next boot's reconcile, never failing the install —
+ * which would make the Store roll the tool back to the version before it. */
 function activate() {
     var result = {};
+    unlinkQuiet(TARGET + '.woc-safearea-tmp');
     runPatch(['apply', '--yes', '--conf', confArg(), '--target', TARGET], function (err, changed) {
-        if (err) { result.status = 'apply failed: ' + err.message; finish(result, /not active|does not fit|does not locate/.test(err.message) ? 0 : 1); return; }
-        if (changed) { writePending('apply'); result.reboot = 'Yandex safe area written; takes effect at the next head-unit start'; result.status = 'safe area written'; }
+        if (err) result.status = 'not applied now (reconciled at the next boot): ' + err.message;
+        else if (changed) { writePending('apply'); result.reboot = 'Yandex safe area written; takes effect at the next head-unit start'; result.status = 'safe area written'; }
         else result.status = 'already set';
         finish(result, 0);
     });
 }
+/* The removal hook. It always exits 0 so a removal is never refused: the
+ * patcher's revert already does nothing (and succeeds) when there is no backup,
+ * the backup is for a different carplay, or the safe area is already stock, and
+ * writeInPlace is all-or-nothing, so a write that could not happen leaves the
+ * binary unchanged. It clears this tool's leftover files from /usr/bin. */
 function deactivate() {
     var result = {};
     runPatch(['revert', '--yes', '--drop-backup', '--target', TARGET], function (err, changed) {
-        if (err) { result.status = 'revert failed: ' + err.message; finish(result, 1); return; }
-        if (changed) { writePending('revert'); result.reboot = 'safe area restored to waze-on-cluster default; takes effect at the next head-unit start'; result.status = 'safe area restored'; }
+        if (err) result.status = 'left as is (could not revert): ' + err.message;
+        else if (changed) { writePending('revert'); result.reboot = 'safe area restored to waze-on-cluster default; takes effect at the next head-unit start'; result.status = 'safe area restored'; }
         else result.status = 'nothing to revert';
-        if (fs.existsSync(RUNNING) && lock.holds(RUNNING, TARGET)) result.removeWhenUnused = [RUNNING];
+        unlinkQuiet(TARGET + '.woc-safearea-tmp');
+        /* The running-link may be the inode a live carplay runs; let mgu-deploy
+         * drop it once nothing runs it. The backup is already dropped by revert. */
+        if (fs.existsSync(RUNNING)) result.removeWhenUnused = [RUNNING];
         finish(result, 0);
     });
 }

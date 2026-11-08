@@ -65,6 +65,20 @@ Install **after** waze-on-cluster and enable its map first. The deploy tool runs
 takes effect at the next head-unit start. Remove it in the Store;
 `safearead.js deactivate` restores the safe area from its backup.
 
+**activate never fails the install.** If the offset cannot be written now (the
+map is off, carplay is not located, `/` is not writable, or there is no backup
+to tell the original from this tool's own edit), activate logs the reason and
+exits 0, leaving the next boot's reconcile to apply it — so a Store update is
+never rolled back for it.
+
+**deactivate never blocks removal, and never writes into another binary.** It
+restores only a backup that belongs to the carplay installed now (same build-id
+and size, same located offsets); after a firmware update replaced carplay the
+backup is for a binary that is gone and this tool's edit is not on the new one,
+so removal succeeds doing nothing and drops the stale backup rather than writing
+old bytes at old offsets. It also clears this tool's leftovers from `/usr/bin`
+(`…woc-safearea-tmp`, and the running-link once nothing runs it).
+
 **What "restores" means.** At the first install the tool backs up the safe area
 as it is **at that moment** (`/usr/bin/carplay.woc-safearea.json`), and removal
 puts exactly that back. If the safe area was already changed by hand before the
