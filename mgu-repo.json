@@ -8,7 +8,7 @@
       "title": "Y.Maps safearea fix",
       "mguHmi": ["ID7"],
       "uninstallable": true,
-      "requires": { "mgu-deploy": "0.7.0", "waze-on-cluster": "0.7.1" }
+      "requires": { "mgu-deploy": "0.8.8", "waze-on-cluster": "0.9.5" }
     }
   ]
 }
